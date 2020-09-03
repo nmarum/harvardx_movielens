@@ -1,0 +1,65 @@
+---
+title: "HarvardX Movielens Capstone Project"
+author: "Nick Marum"
+date: "01/09/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(caret)
+library(lubridate)
+#Analysis assumes edx and validation objects are saved individually in your working directory as edx.rda and validation.rda.  The edx and validation objects were created through separate import script as per the code provided by course.  
+
+if(!exists("edx")) load("edx.rda") 
+edx <- edx %>% mutate(datetime = as_datetime(timestamp)) #adding datetime column using timestamp
+
+```
+
+*INTRODUCTION*
+(introduction/overview/executive summary section that describes the dataset and summarizes the goal of the project and key steps that were performed)
+
+This is a Movielens project report for the Harvardx Data Science professional program Capstone course. Inspired by the Netflix Prize (https://en.wikipedia.org/wiki/Netflix_Prize), this  machine learning project will use the 10 million entries from the "Movielens" data set, a publicly available data set user movie ratings, in order to predict movie user ratings based upon previous ratings the user  made of other movies.  Such an algorithm is the basis for movie recommendation systems used in popular movie streaming services.
+
+Specifically, this report will demonstrate the steps taken to develop a machine learning algorithm to predict in a randomly selected hold out validation set made up of 10% of the 10 million entries.  The root mean squared error (RMSE) of the algorithm against the true values in the validation set will be used as part of the overall scoring of this project. (The validation set is not to be used for the training, evaluation or cross-validation of the algorithm.)  
+
+_Overview of the dataset_
+
+The project instructions require the use of the "edx" object as the training set portion of the project.  The original edx set included six columns: "userID", which provide a unique user identification number; "movieID", which provided a unique identification number for each move; "rating", the rating assigned by the user for the movie; and "timestamp", which was the time the user rating was recorded in POSIXct format.  Since "timestamp" is not easily interpretable, I added a seventh column, "datetime" which translated the timestamp into an accessible date and time format for each movie rating entry.  In all there are little more than 9 million movie rating entries from more than 70,000 users rating about 10,000 movies in the dataset  The earliest movie rating entry is from January 1995, and the latest is from January 2009.  Ratings were given in .5 increments between .5 to 5 stars (there is no 0 entries in the data set).  Ratings half star ratings were generally less common than full star ratings.  Four and three stars were the most common ratings, followed by 5 stars and 3.5 stars.
+
+
+
+```{r cars}
+summary(edx)
+```
+
+Ratings were given in .5 increments between .5 to 5 stars (there is no 0 entries in the data set).  Ratings half star ratings were generally less common than full star ratings.  Four and three stars were the most common ratings, followed by 5 stars and 3.5 stars.
+```{r}
+hist(edx$rating)
+```
+
+
+
+
+*Analysis*
+
+a methods/analysis section that explains the process and techniques used, including data cleaning, data exploration and visualization, insights gained, and your modeling approach
+
+
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+*Results*
+
+a results section that presents the modeling results and discusses the model performance
+
+
+
+
+```{r}
+
+```
+*Conclusion*
+conclusion section that gives a brief summary of the report, its limitations and future work
