@@ -6,10 +6,11 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = FALSE)
 library(tidyverse)
 library(caret)
 library(lubridate)
+library(recommenderlab)
 #Analysis assumes edx and validation objects are saved individually in your working directory as edx.rda and validation.rda.  The edx and validation objects were created through separate import script as per the code provided by course.  
 
 if(!exists("edx")) load("edx.rda") 
@@ -40,9 +41,296 @@ hist(edx$rating)
 ```
 
 
+```{r}
+qplot(movieId, data = edx, geom = "density")
+```
 
+
+*Methodology and Analysis*
+The text book materials for the HarvardX machine learning course included a detailed discussion of the Movielens data and went son to examine a number of prediction methodologies, including taking into account user and movie effects as well as regularizing movie effects by minimizing the impact of user rating on less commonly reviewed movies.  My intent is to start by recreating the most successful of the methodologies discussed in the text book (Regularized Movie + User Effect model:  .881 RMSE) and attempt to improve upon it.
+
+The text book did provide a  clue as to how to improve on the model: using matrix factorization to identify patterns within the residuals of the Regularized Movie + User effect model (Chapter 33.11 - Matrix Factorization).  Using single value decomposition and principle component analysis, the course materials showed  there were  patterns left in the data in terms of groupings of movies that generally are rated similarly, which could be a basis for further improving on the model.  While the textbook did not discuss techniques that would use these estimates to fit a model, it recommended using the recommenderlab package if you were.
+
+_recommenderlab_
+
+The recommenderlab: Lab for Developing and Testing Recommender Algorithms R package version 0.2-6 (https://github.com/mhahsler/recommenderlab) is a framework for the testing and evaluation of recommendation algorithms.  The vignette for recommenderlab describes that there are various types of recommendation algorithms that are used in commercial applications, the type of algorithms that the package used are "collaborative filtering" algorithms which uses given ratings data from a variety of users on a set of items in order to make predictions of missing ratings - which seems to be an ideal algorithm for the Movielens project.   There are two types of collaborative filtering: user-based collaborative filtering and item-based collaborative filtering.  The package includes a number of helpful functions for recommendation tasks, including functions to normalize ratings data, transform ratings data into binary data, and a built-in RMSE function for estimating algorithm performance. 
+
+User-based collaborative filtering (UBCF) assumes that users with similar will rate items similarly and therefore analyzes the ratings of many individuals in order to make predictions using a k-nearest neighbours approach.  The vignette also suggests that for some datasets, the overall performance of the algorithm can be improved if user rating data is normalized by subtracting the mean of each user row from each rating in pre-processing to remove user rating bias. (This approach is computationally intensive, which could be a challenge for me since I am using an old laptop.)
+
+Item-based collaborative filtering (IBCF) is based upon the relationships between items inferred from the rating matrix.  The assumption behind this approach is that users will prefer items that are similar to items that they have already indicated they like.  This approach creates a similarity matrix for items which is used to make predictions.  This approach is less computationally intensive and therefore quicker than the UBCF, however it generally provides slightly inferior results.  Similar to UBCF, the package materials recommends normalizing the data in order to help improve results.
+
+There is also other methods based upon single value decomposition (SVD) or matrix factorization which was described in the textbook as a potential methodology to improve upon model results as this was closely related to principle component analysis.
+
+This project will use the UBCF and IBCF algorithms to try and improve on the results of the text book Regularized Movie + User effect model as a baseline model.
+
+_Planned Steps_
+
+As a first step, we will break down the edx data into a small training and test set.  Then we will reconstruct a baseline model through the regularization of movie effects and the normalization of user effects as a pre-processing step.  We will then compare this baseline model with models developed within the recommenderlab environment IBCF and UBCF algorithms as a proof of concept.
+
+If all goes well, we will split the larger edx dataset into training and test sets which will be imported into the recommenderlab environment in order to apply the highest performing algorithm on the larger data set and tune appropriately to provide the best result.
 
 *Analysis*
+
+As a first step we will create a small subset of the 100,000 entries from the edx dataset and create a training and a test set.
+```{r}
+set.seed(200907, sample.kind = "Rounding")#setting seed for replication later 
+mini <- edx[1:100000] #first 100K entries
+
+ind <- createDataPartition(y= mini$rating, times = 1, p = .2, list = FALSE)
+train_mini <- mini[-ind,]
+test_mini <- mini[ind,]
+
+test_mini <- test_mini %>% 
+  semi_join(train_mini, by = "movieId") %>%
+  semi_join(train_mini, by = "userId")
+
+summary(train_mini)
+```
+We will then normalize the user ratings to adjust for user rating bias by centering each rating by subtracting mean rating score (mu) for each user.
+
+```{r}
+
+mu <- train_mini %>% group_by(userId) %>%
+  summarise(mu = mean(rating))
+  
+train_usernorm <- train_mini %>% left_join(mu, by="userId") %>%
+  mutate(rating_norm = rating-mu)
+
+train_usernorm %>% group_by(rating) %>% ggplot(aes(rating, rating_norm)) + geom_point(alpha = .5)
+
+```
+
+We will then regularize the movie data to adjust for movie effects.  First we will demonstrate the regularization of movie ratings with tuning parameter (lambda).  We will then show how we picked the ideal tuning parameter for the regularization.
+
+```{r}
+
+lambda <- .5
+mu <- mean(train_mini$rating)
+movie_reg_avgs <- train_mini %>% 
+  group_by(movieId) %>% 
+  summarize(regularized = sum(rating - mu)/(n()+lambda), n_i = n())
+
+movie_avg <- train_mini %>%
+  group_by(movieId) %>%
+  summarise(avg = mean(rating))
+
+plot(movie_avg$avg, movie_reg_avgs$regularized)
+```
+As we can see from the above plot, the regularization not only normalizes the data but also moderates some of the extreme ratings (1s and 5s) for films where there is relatively few ratings.  I should note that unlike the textbook which regularized both the user and movie rating data, I did not regularize the user data.  There was a good case made in the text book for regularizing the data for movie effects for obscure movies where there were relatively few ratings, normalizing the user effect (i.e, the tendency to rate movies in general more positively or negatively due to the personality of the reviewer) seemed to be sufficient.
+
+The lambda parameter can be tuned to achieve the best results in terms of root mean squared error.  Below is the process for selecting the optimal lambda.  Note that we a selecting the optimized lambda based purely on the training data, but will use the test data to evaluate the overall performance.
+
+```{r}
+lambdas <- seq(0, 10, 0.25)
+
+rmses <- sapply(lambdas, function(l){
+
+  mu <- mean(train_mini$rating)
+  
+  b_i <- train_mini %>% 
+    group_by(movieId) %>%
+    summarize(b_i = sum(rating - mu)/(n()+l)) #regularized film effect
+  
+  b_u <- train_mini %>% 
+    left_join(b_i, by="movieId") %>%
+    group_by(userId) %>%
+    summarize(b_u = mean(rating - mu)) #normalized user effect
+
+  predicted_ratings <- 
+    train_mini %>% 
+    left_join(b_i, by = "movieId") %>%
+    left_join(b_u, by = "userId") %>%
+    mutate(pred = mu + b_i + b_u) %>%
+    pull(pred)
+  
+    return(RMSE(train_mini$rating, predicted_ratings)) #Note: using training set
+})
+
+lambdas[which.min(rmses)] #selecting the lambda with the best RMSE score 
+plot(lambdas, rmses)
+```
+
+Using the training set data, we can see the optimized lambda is 8.75.  We will use this parameter in order to make predictions using the textbook based model on the test set.
+
+```{r}
+
+mu <- mean(train_mini$rating) #overall training wet average movie rating
+l_opt <- .5 #lambda selected from training set optimization
+  
+  b_i <- train_mini %>% 
+    group_by(movieId) %>%
+    summarize(b_i = sum(rating - mu)/(n()+l_opt)) #regularized movie effect
+  
+  b_u <- train_mini %>% 
+    left_join(b_i, by="movieId") %>%
+    group_by(userId) %>%
+    summarize(b_u = mean(rating - mu)) # normalized user effect
+
+  predicted_ratings <- 
+    test_mini %>% #using test set for prediction
+    left_join(b_i, by = "movieId") %>%
+    left_join(b_u, by = "userId") %>%
+    mutate(pred = mu + b_i + b_u) %>% #prediction based on overall set average, user and movie effects
+    pull(pred)
+  
+RMSE(test_mini$rating, predicted_ratings)
+
+
+```
+Using the training set for optimizing the model and only using the test set for evaluation, can see that the overall performance is a little poorer than what was identified in the text book (.892 rather than .881).  However if the test data is used to optimize the parameter (which was what was done in the textbook), the results is quite similar to textbook regularized effects model as we can see below.
+
+```{r}
+lambdas <- seq(0, 10, 0.25)
+
+rmses <- sapply(lambdas, function(l){
+
+  mu <- mean(train_mini$rating)
+  
+  b_i <- train_mini %>% 
+    group_by(movieId) %>%
+    summarize(b_i = sum(rating - mu)/(n()+l))
+  
+  b_u <- train_mini %>% 
+    left_join(b_i, by="movieId") %>%
+    group_by(userId) %>%
+    summarize(b_u = mean(rating - mu))
+
+  predicted_ratings <- 
+    test_mini %>% # note we are now using the test set for the predictions
+    left_join(b_i, by = "movieId") %>%
+    left_join(b_u, by = "userId") %>%
+    mutate(pred = mu + b_i + b_u) %>%
+    pull(pred)
+  
+    return(RMSE(predicted_ratings, test_mini$rating))#RMSE based on test set
+})
+
+mu <- mean(train_mini$rating)
+l <- lambdas[which.min(rmses)] #selecting the lambda with the best RMSE score
+  
+  b_i <- train_mini %>% 
+    group_by(movieId) %>%
+    summarize(b_i = sum(rating - mu)/(n()+l))
+  
+  b_u <- train_mini %>% 
+    left_join(b_i, by="movieId") %>%
+    group_by(userId) %>%
+    summarize(b_u = mean(rating - mu))
+
+  predicted_ratings <- 
+    test_mini %>% 
+    left_join(b_i, by = "movieId") %>%
+    left_join(b_u, by = "userId") %>%
+    mutate(pred = mu + b_i + b_u) %>%
+    pull(pred)
+  
+    RMSE(predicted_ratings, test_mini$rating)
+
+```
+Using the test data, we find that the optimal lambda parameter is 4.25.
+
+Now that we have our baseline model, we will explore the algorithms available for us in the recommenderlab package.
+
+*_recommenderlab_ Collaborative Filtering, SVD and other models*
+
+The first step is to build a rating matrix that can be entered into the recommenderlab "rating matrix" format.  One of the requirements of the recommenderlab package is that each user is represented by a single row and that each item (or film in this case) is a column.  Given most users will only rate a handful of potential movies, this creates a "sparse" matrix comprised primarily of NAs that recommenderlab stores is a less memory intensive way for computations.
+```{r}
+
+rm <- as(mini, "realRatingMatrix")
+
+hist(getRatings(rm), breaks = 15)
+
+```
+
+We have imported our mini data set into the recommenderlab environment.  We will also take a look at using some of the built in functionality in recommenderlab to normalize the data, which is a recommended step before applying the recommender models built into the package.
+
+
+
+```{r}
+rm <- normalize(rm)
+
+hist(getRatings(rm))
+```
+
+
+
+There are a number of different recommender algorithms in the recommenderlab that can be accessed using the command:  recommenderRegistry$get_entries(dataType = "realRatingMatrix").  It includes single value decomposition (SVD) based methods in addition to the IBCF and UBCF methods.
+
+We will try using an evaluation methodology built into the package to train and evaluate a "recommender" model.
+
+
+
+```{r}
+
+e <- evaluationScheme(rm, method="split", train=.9, given=10, goodRating=5)
+
+IBCF <- Recommender(getData(e, "train"), method="IBCF")
+IBCF_preds <- predict(IBCF, getData(e, "known"), type="ratings")
+IBCF_acc <- calcPredictionAccuracy(IBCF_preds, getData(e, "unknown"))
+
+UBCF <- Recommender(getData(e,"train"), method="UBCF")
+UBCF_preds <- predict(UBCF, getData(e, "known"), type="ratings")
+UBCF_acc <- calcPredictionAccuracy(UBCF_preds, getData(e, "unknown"))
+
+SVDF <- Recommender(getData(e, "train"), method="SVDF")
+SVDF_preds <- predict(SVDF, getData(e, "known"), type="ratings")
+SVDF_acc <- calcPredictionAccuracy(SVDF_preds, getData(e, "unknown"))
+
+SVD <- Recommender(getData(e, "train"), method="SVD")
+SVD_preds <- predict(SVD, getData(e, "known"), type="ratings")
+SVD_acc <- calcPredictionAccuracy(SVD_preds, getData(e, "unknown"))
+
+data.frame(IBCF_acc, UBCF_acc, SVDF_acc, SVD_acc)
+```
+
+Much to my surprise, the collaborative filtering methods I thought would be so powerful did not do nearly as well as I would have hoped.  The Funk Single Value Decomposition (SVDF) appears to be the model that provides the best accuracy, however the accuracy is much inferior to the much simpler baseline model we developed.  The regular SVD method also did well and was much less computationally intensive and generated results much faster.  It is possible that a larger dataset could improve the performance of the collaborative filtering and single value decomposition models, however tuning of the models could also improve results substantially.
+
+Lets see if we can evaluate it in a different way using training and test sets and if it is possible to tune the performance.  
+
+
+
+```{r}
+reg_SVD <- recommenderRegistry$get_entry("SVD")
+reg_SVDF <- recommenderRegistry$get_entry("SVDF")
+data.frame(SVD = as.vector(reg_SVD$parameters))
+
+```
+Opening up and inspecting the registry entries for the SVD algorithm shows that there are essentially three parameters that are open to tuning.  "k" as in nearest neighbors in terms of features, which has a default value of 10, "maxiter" which has a default value of 100, and "normalize" which has a default value of "center".  Presumably the normalize can also be z-score normalized (or "scaled") which is another normalization technique described in the recommenderlab documentation.
+
+
+```{r}
+data.frame(SVDF = as.vector(reg_SVDF$parameters))
+```
+However, SVDF has, in addition to the SVD parameters of "k" and "normalize", it also has "gamma" a regularization term, "lambda", the learning rate, "min_improvement", the requirement minimum improvement per iteration, "min_epochs", the minimum number of iterations per feature, "max_epochs", the maximum number of iterations per feature and "verbose" which is a logical parameter of showing progress.  Clearly SVDF is a more sophisticated and complicated algorithm to tune.
+
+
+Lets try by tuning the SVD model by tuning for "k".
+
+```{r}
+e <- evaluationScheme(rm, method="cross", k=10, train=.9, given=3, goodRating=5)
+ks <- seq(10, 30) #changing up evaluation scheme to include k-fold cross-validation
+
+rmses <- sapply(ks, function(ks){
+SVD <- Recommender(getData(e, "train"), method="SVD", param = list(k = ks, maxiter = 100, normalize = "center"))
+SVD_preds <- predict(SVD, getData(e, "known"), type="ratings")
+SVD_acc <- calcPredictionAccuracy(SVD_preds, getData(e, "unknown"))
+SVD_acc[1]
+})
+
+ks[which.min(rmses)]
+qplot(ks, rmses)
+
+
+```
+
+After a series of trial and error of different sequences of integer values for "k", I was finding a somewhat linear trend of better performance due to higher level of k values, with 28 being the maximum value - much more than the default of 10.  This raised raised concerns of overtraining for me.  As such, using the evaluation scheme of recommenderlab I introduced k-fold cross-validation which suggested an optimal value of 18 which provided an RMSE of 1.026.  A slight improvement.
+
+Using this knowledge gained from the computationally less intensive SVD model, I would like to see how much we can improve the SVDF model by simply inputing the optimal the optimal SVD k-value of 18.
+
+
+
+
+However, given what we learned through the textbook of the importance of not only normalizing data, but regularizing the data so as not to allow it to be skewed by few entries, and how that improved our baseline model, I am going to try and do the same thing here.  
 
 a methods/analysis section that explains the process and techniques used, including data cleaning, data exploration and visualization, insights gained, and your modeling approach
 
@@ -51,7 +339,6 @@ a methods/analysis section that explains the process and techniques used, includ
 ```{r pressure, echo=FALSE}
 plot(pressure)
 ```
-*Results*
 
 a results section that presents the modeling results and discusses the model performance
 
