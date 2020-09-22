@@ -307,30 +307,146 @@ However, SVDF has, in addition to the SVD parameters of "k" and "normalize", it 
 Lets try by tuning the SVD model by tuning for "k".
 
 ```{r}
-e <- evaluationScheme(rm, method="cross", k=10, train=.9, given=3, goodRating=5)
-ks <- seq(10, 30) #changing up evaluation scheme to include k-fold cross-validation
+e <- evaluationScheme(rm, method="cross", k=10, train=.9, given=10, goodRating=5)#changing up evaluation scheme to include k-fold cross-validation
+ks <- seq(18, 38) 
 
 rmses <- sapply(ks, function(ks){
-SVD <- Recommender(getData(e, "train"), method="SVD", param = list(k = ks, maxiter = 100, normalize = "center"))
-SVD_preds <- predict(SVD, getData(e, "known"), type="ratings")
-SVD_acc <- calcPredictionAccuracy(SVD_preds, getData(e, "unknown"))
-SVD_acc[1]
+results <- evaluate(e, method="SVD", type="ratings", param = list(k=ks))
+avg(results)[1]
 })
 
 ks[which.min(rmses)]
 qplot(ks, rmses)
 
 
+
 ```
 
-After a series of trial and error of different sequences of integer values for "k", I was finding a somewhat linear trend of better performance due to higher level of k values, with 28 being the maximum value - much more than the default of 10.  This raised raised concerns of overtraining for me.  As such, using the evaluation scheme of recommenderlab I introduced k-fold cross-validation which suggested an optimal value of 18 which provided an RMSE of 1.026.  A slight improvement.
+After a series of trial and error of different sequences of integer values for "k", I was finding a somewhat linear trend of better performance due to higher level of k values, with 28 being the maximum value - much more than the default of 10.  This raised raised concerns of overtraining for me.  As such, using the evaluation scheme of recommenderlab I introduced k-fold cross-validation which suggested an optimal value of 34 which provided an RMSE of 1.003.  A slight improvement.
 
-Using this knowledge gained from the computationally less intensive SVD model, I would like to see how much we can improve the SVDF model by simply inputing the optimal the optimal SVD k-value of 18.
+Using this knowledge gained from the computationally less intensive SVD model, I would like to see how much we can improve the SVDF model by simply inputing the optimal the optimal SVD k-value of 34.
+
+```{r}
+e <- evaluationScheme(rm, method="split", train=.9, given=10, goodRating=5)
+SVDF_opt <- Recommender(getData(e, "train"), method="SVDF", para = list(k=34))
+SVDF_preds <- predict(SVDF, getData(e, "known"), type="ratings")
+calcPredictionAccuracy(SVDF_preds, getData(e, "unknown"))
+
+```
+After an extremely long processing time and using a k parameter of 34, the resulting RMSE is .8986.  Still short of the .8819 of our baseline model but getting closer.  Additionally tuning could refine the result, but it would take a significant amount of time with relatively little improvement as we saw with the SVD model tuning.  This is still way short of the grading-scale full-points standard of .8649.
+
+However, given what we learned through the textbook of the importance of not only normalizing data, but regularizing the data so as not to allow it to be skewed by few entries, and how that significantly improved our baseline model, I am going to try and do the same thing here.  
+
+```{r}
+mu <- mean(train_mini$rating)
+movie_reg <- mini %>% 
+  group_by(movieId) %>%
+  summarize(rating = sum(rating-mu)/(n()+4.25))
+
+movie_avg <- mini %>%
+  group_by(movieId) %>%
+  summarize(avg = mean(rating))
+
+plot(movie_reg$rating~movie_avg$avg)
+
+```
 
 
 
 
-However, given what we learned through the textbook of the importance of not only normalizing data, but regularizing the data so as not to allow it to be skewed by few entries, and how that improved our baseline model, I am going to try and do the same thing here.  
+```{r}
+mu <- mean(train_mini$rating)
+mini_reg <- mini %>% 
+  group_by(movieId) %>%
+  mutate(rating = sum(rating-mu)/(n()+4.25)) %>% 
+  ungroup()
+
+hist(mini_reg$rating)
+```
+
+
+
+
+```{r}
+
+
+rm_reg <- as(as.data.frame(mini_reg), "realRatingMatrix")
+rm_reg <- normalize(rm_reg) #normalize entries by row (e.g., user)
+
+hist(getRatings(rm_reg))
+
+```
+
+As expected, ratings are centered around zero.   A little more tight than just normalizing the data by user (row). 
+
+
+
+```{r}
+
+head(as(rm_reg, "data.frame"))
+```
+We can see the top rating of the first 6 rows is item 292 and the lowest rating is item 355 with item 122 also with a relatively low rating.  Let's inspect these closer.
+
+```{r}
+
+c(mini_reg$title[292], mini_reg$title[122], mini_reg$title[355])
+
+
+```
+All three are romantic films, however Bridget Jone's Diary was a romantic comedy blockbuster while the other two are more "arthouse" type of films.  "Three Colors: White" is a french language romantic drama and "The Sum of Us" is a Australian LGBT romantic comedy.  This all seems consistent with what we would expect.
+
+
+We will take a look at a particular user to get a sense for the matrix.
+
+
+```{r}
+sub_set <- rm_reg[102]
+as(sub_set, "matrix")[,1:50]
+
+
+```
+You can see that for user entry 102, the matrix is pretty sparse.  Only two entries in the first 50 columns (films).
+
+```{r}
+max <- which.max(as(sub_set, "matrix"))
+min <- which.min(as(sub_set, "matrix"))
+
+c(as(sub_set, "matrix")[,max], as(sub_set, "matrix")[,min])
+
+```
+
+
+```{r}
+
+e_reg <- evaluationScheme(rm_reg, method="cross", k=10, given=1, goodRating=5)
+SVD_opt <- Recommender(getData(e_reg, "train"), method="SVD", para = list(k=34))
+SVD_preds <- predict(SVD_opt, getData(e_reg, "known"), type="ratings")
+calcPredictionAccuracy(SVD_preds, getData(e_reg, "unknown"))
+
+```
+Wow!  RMSE score of .427
+
+
+```{r}
+
+ks <- seq(28, 36) 
+
+rmses <- sapply(ks, function(ks){
+results <- evaluate(e_reg, method="SVD", type="ratings", param = list(k=ks))
+avg(results)[1]
+})
+
+ks[which.min(rmses)]
+qplot(ks, rmses)
+```
+
+
+```{r}
+
+results <- evaluate(e_reg, method="SVD", type="ratings", param = list(k=32)) #evaluating using 10 fold cross validation
+avg(results)
+```
+
 
 a methods/analysis section that explains the process and techniques used, including data cleaning, data exploration and visualization, insights gained, and your modeling approach
 
