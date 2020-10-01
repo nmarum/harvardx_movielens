@@ -167,7 +167,8 @@ l_opt <- .5 #lambda selected from training set optimization
     test_mini %>% #using test set for prediction
     left_join(b_i, by = "movieId") %>%
     left_join(b_u, by = "userId") %>%
-    mutate(pred = mu + b_i + b_u) %>% #prediction based on overall set average, user and movie effects
+    mutate(pred = mu + b_i + b_u) %>% 
+#prediction based on overall set average, user and movie effects
     pull(pred)
   
 RMSE(test_mini$rating, predicted_ratings)
@@ -260,14 +261,17 @@ We will try using an evaluation methodology (evaluationScheme) built into the pa
 ```{r echo=TRUE, message=FALSE, warning=FALSE}
 
 e <- evaluationScheme(rm, method="split", train=.9, given=10, goodRating=5)
-#building an evalutation scheme object from "realRatingMatrix".  90% of matrix will be used for training.  The given parameter is how many entries will be given to the model per user.  It is an adjustable parameter with a default of 10.  The "goodrating" parameter is simply to identify what a top rating would be under the model.
+#building an evalutation scheme object from "realRatingMatrix".  90% of matrix will be used for training.  
+#The given parameter is how many entries will be given to the model per user.  
+#It is an adjustable parameter with a default of 10.  
+#The "goodrating" parameter is simply to identify what a top rating would be under the model.
 
 IBCF <- Recommender(getData(e, "train"), method="IBCF") 
-#training recommender model, in this case, an IBCF, using the training set from the evaluation scheme object "e".
+#training recommender model (IBCF) using the training set from the evaluation scheme "e".
 IBCF_preds <- predict(IBCF, getData(e, "known"), type="ratings")
-#using the "known" user and item values from the test set in the evaluation scheme object to create a prediction of ratings (IBCF_preds)
+#using the "known" user and item values from the test set in the evaluation scheme to create predictions
 IBCF_acc <- calcPredictionAccuracy(IBCF_preds, getData(e, "unknown"))
-#accuracy is measured using the built in "calcPredictionAccuracy" function against the "unknown" part of the test set in the eval scheme object (i.e., ratings) and the model predictions.
+#accuracy is measured using the "calcPredictionAccuracy" function against the "unknown" part of the test set (i.e., ratings).
 
 UBCF <- Recommender(getData(e,"train"), method="UBCF")
 UBCF_preds <- predict(UBCF, getData(e, "known"), type="ratings")
@@ -299,9 +303,10 @@ Opening up and inspecting the registry entries for the SVD algorithm shows that 
 
 
 Lets try by tuning the SVD model by tuning for "k".
-```{r warning=FALSE}
+```{r echo=FALSE, message=FALSE, warning=FALSE}
 set.seed(1, sample.kind = "Rounding")
-e <- evaluationScheme(rm, method="cross", k=10, train=.9, given=10, goodRating=5)#changing up evaluation scheme to include k-fold cross-validation
+e <- evaluationScheme(rm, method="cross", k=10, train=.9, given=10, goodRating=5)
+#changing up evaluation scheme to include k-fold cross-validation
 ks <- seq(18, 38) #inputing a sequence of k-values for optimization.
 
 rmses <- sapply(ks, function(ks){
@@ -453,7 +458,7 @@ pred <-read.csv("predict.txt", header = FALSE)
 #format without a header.
 
 RMSE(test_mini$rating, pred$V1)
-#RMSE of .867
+
 ```
 Before any tuning was conducted, the model is already providing an improved RMSE score than the baseline model and the computation time was only a few moments rather than the many minutes spent on earlier matrix factorization based algorithms.
 
@@ -524,7 +529,7 @@ opts$min
 
 
 After a number of different attempts to adjust the user and item (movie) factors due to the effects identified in the baseline model, it seems, perhaps unsurprisingly, that many of the default tuning options provided the best results.  Also, while a lower learning rate than the default seemed worked well to reduce the loss function, when applied against the test set, the RMSE score was not as good as the default results, which is likely due to overfitting.  Additionally, there seemed to be significant variability in the tuning results as each time I would run the model using the same parameters, I would get a different result.  Therefore I set aside the tuning function and a ran a replicate and sapply function on the training and evaluation of a LIBMF function with all of the parameters optimized, except for dimensionality.  For "dim" I created a short vector sequence of 10, 20, and 30 which I ran through each 30 times each in order to leverage the central limit therom to approximate the true RMSE value of the model against the test set for each value.  I plotted the mean of the 30 RMSE results against the "dim" values. 
-```{r message=FALSE, warning=FALSE}
+```{r message=FALSE, warning=FALSE, include=FALSE}
 dims <- c(10, 20, 30)
 
 set.seed(1, sample.kind = "Rounding")
