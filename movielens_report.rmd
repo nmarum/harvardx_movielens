@@ -1,8 +1,10 @@
 ---
 title: "HarvardX Movielens Capstone Project"
 author: "Nick Marum"
-date: "01/09/2020"
-output: html_document
+date: "30/09/2020"
+output:
+  pdf_document: default
+  html_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -20,11 +22,10 @@ edx <- edx %>% mutate(datetime = as_datetime(timestamp)) #adding datetime column
 ```
 
 *INTRODUCTION*
-(introduction/overview/executive summary section that describes the dataset and summarizes the goal of the project and key steps that were performed)
 
 This is a Movielens project report for the Harvardx Data Science professional program Capstone course. Inspired by the Netflix Prize (https://en.wikipedia.org/wiki/Netflix_Prize), this  machine learning project will use the 10 million entries from the "Movielens" data set, a publicly available data set user movie ratings, in order to predict movie user ratings based upon previous ratings the user  made of other movies.  Such an algorithm is the basis for movie recommendation systems used in popular movie streaming services.
 
-Specifically, this report will demonstrate the steps taken to develop a machine learning algorithm to predict in a randomly selected hold out validation set made up of 10% of the 10 million entries.  The root mean squared error (RMSE) of the algorithm against the true values in the validation set will be used as part of the overall scoring of this project. (The validation set is not to be used for the training, evaluation or cross-validation of the algorithm.)  
+Specifically, this report will demonstrate the steps taken to identify and optimize a matrix factorization-based machine learning algorithm to predict in a randomly selected hold out validation set made up of 10% of the 10 million entries.  The root mean squared error (RMSE) of the algorithm against the true values in the validation set will be used as part of the overall scoring of this project. (The validation set is not to be used for the training, evaluation or cross-validation of the algorithm.)  This project focused on two packages that use matrix factorization  algorithms for the prediction of user ratings:  the _recommenderlab_ package and the _recosystem_ package.
 
 _Overview of the dataset_
 
@@ -35,45 +36,40 @@ The project instructions require the use of the "edx" object as the training set
 ```{r cars}
 summary(edx)
 ```
-
 Ratings were given in .5 increments between .5 to 5 stars (there is no 0 entries in the data set).  Ratings half star ratings were generally less common than full star ratings.  Four and three stars were the most common ratings, followed by 5 stars and 3.5 stars.
+
 ```{r}
+
 hist(edx$rating)
-```
 
+```
+As we can see from the historgram above, the most common rating was 4 stars followed by 3 stars.  The least common rating was .5 stars
 
 ```{r}
-qplot(movieId, data = edx, geom = "density")
+qplot(datetime, data = edx, geom = "density")
 ```
 
+A density plot of ratings over time shows that while the earliest ratings were registered in 1995, the number of ratings spiked in 1997 and then spiked again in 2000 and maintained a steady stream of ratings until 2009 when data collection stopped.
 
 *Methodology and Analysis*
+
 The text book materials for the HarvardX machine learning course included a detailed discussion of the Movielens data and went son to examine a number of prediction methodologies, including taking into account user and movie effects as well as regularizing movie effects by minimizing the impact of outlier ratings on less commonly reviewed movies.  My intent is to start by recreating the most successful of the methodologies discussed in the text book (Regularized Movie + User Effect model:  .881 RMSE) and attempt to improve upon it.
 
 The text book did provide a  clue as to how to improve on the model: using matrix factorization to identify latent patterns within the residuals of the Regularized Movie + User effect model (Chapter 33.11 - Matrix Factorization).  Using single value decomposition and principle component analysis, the course materials showed  there were  patterns left in the data in terms of groupings of movies that generally are rated similarly, which could be a basis for further improving on the model.  While the textbook did not discuss techniques that would use these estimates to fit a model, it recommended using the recommenderlab package for those students who were interested.
 
-_recommenderlab_
+_recommenderlab: Lab for Developing and Testing Recommender Algoritms in R_
 
-The recommenderlab: Lab for Developing and Testing Recommender Algorithms R package version 0.2-6 (https://github.com/mhahsler/recommenderlab) is a framework for the testing and evaluation of recommendation algorithms.  The vignette for recommenderlab describes that there are various types of recommendation algorithms that are used in commercial applications, the type of algorithms that the package used are "collaborative filtering" algorithms which uses given ratings data from a variety of users on a set of items in order to make predictions of missing ratings - which seems to be an ideal algorithm for the Movielens project.   There are two types of collaborative filtering: user-based collaborative filtering and item-based collaborative filtering.  The package includes a number of helpful functions for recommendation tasks, including functions to normalize ratings data, transform ratings data into binary data, and a built-in RMSE function for estimating algorithm performance. _recommenderlab_ appears to be one of the most popular purpose built packages for recommendation systems using matrix factorization, however there are other packages as well.  For example, _recosystem_ uses a different computational approach for recommender system matrix factorization but does not have the same number of features and algorithms as the _recommenderlab_ package.  We will discuss _recosystem_ in more detail later.
+The _recommenderlab_  R package version 0.2-6 (https://github.com/mhahsler/recommenderlab) is a framework for the testing and evaluation of recommendation algorithms.  The vignette for _recommenderlab_ describes that there are various types of recommendation algorithms that are used in commercial applications, the type of algorithms that the package used are "collaborative filtering" algorithms which uses given ratings data from a variety of users on a set of items in order to make predictions of missing ratings - which seems to be an ideal algorithm for the Movielens project.  The package includes a number of helpful functions for recommendation tasks, including functions to normalize ratings data, transform ratings data into binary data, and a built-in RMSE function for estimating algorithm performance. _recommenderlab_ appears to be one of the most popular purpose built packages for recommendation systems using matrix factorization, however there are other packages as well.  For example, _recosystem_ uses a different computational approach for recommender system matrix factorization but does not have the same number of features and algorithms as the _recommenderlab_ package.  We will discuss _recosystem_ in more detail later.
 
-User-based collaborative filtering (UBCF) assumes that users with similar will rate items similarly and therefore analyzes the ratings of many individuals in order to make predictions using a k-nearest neighbours approach.  The vignette also suggests that for some datasets, the overall performance of the algorithm can be improved if user rating data is normalized by subtracting the mean of each user row from each rating in pre-processing to remove user rating bias. (This approach is computationally intensive, which could be a challenge for me since I am using an old laptop.)
+User-based and item-based collaborative filtering models are prominently discussed in the _recommenderlab_ literature.  Both involve making comparisons based on the relationships between users and items (movies) in order to draw inferences and make predictions about what a user would like.  There is also other methods based upon single value decomposition (SVD) and matrix factorization that was described in the textbook as a potential way to improve upon model results.
 
-Item-based collaborative filtering (IBCF) is based upon the relationships between items inferred from the rating matrix.  The assumption behind this approach is that users will prefer items that are similar to items that they have already indicated they like.  This approach creates a similarity matrix for items which is used to make predictions.  This approach is less computationally intensive and therefore quicker than the UBCF, however it generally provides slightly inferior results.  Similar to UBCF, the package materials recommends normalizing the data in order to help improve results.
+This project will examine collaborative filtering, single value decomposition and other matrix factorization algorithms within the _recommenderlab_ and _recosystem_ packages to try and improve on the baseline results of the text book Regularized Movie + User effect model.
 
-There is also other methods based upon single value decomposition (SVD) or matrix factorization which was described in the textbook as a potential methodology to improve upon model results as this was closely related to principle component analysis.
-
-This project will examine collaborative filtering, single value decomposition and other matrix factorization algorithms to try and improve on the results of the text book Regularized Movie + User effect model as a baseline model.
-
-_Planned Steps_
-
-As a first step, we will break down the edx data into a small training and test set.  Then we will reconstruct a baseline model through the regularization of movie effects and the normalization of user effects as a pre-processing step.  We will then compare this baseline model with models developed within the _recommenderlab_ environment as a proof of concept.
-
-If all goes well, we will split the larger edx dataset into training and test sets which will be imported into the recommender system environment in order to apply the highest performing algorithm on the larger data set and tune appropriately to provide the best result.
 
 *Analysis*
 
 As a first step we will create a small subset of the 100,000 entries from the edx dataset and create a training and a test set.
-```{r}
+```{r echo=TRUE, warning=FALSE}
 set.seed(200907, sample.kind = "Rounding")#setting seed for replication later 
 mini <- edx[1:100000] #first 100K entries
 
@@ -87,9 +83,9 @@ test_mini <- test_mini %>%
 
 summary(train_mini)
 ```
-We will then normalize the user ratings to adjust for user rating bias by centering each rating by subtracting mean rating score (mu) for each user.
+With this training and test set identified, we will start by recreating the baseline model from the textbook.  First, We will then normalize the user ratings to adjust for user rating bias by centering each rating by subtracting mean rating score (mu) for each user.
 
-```{r}
+```{r echo=TRUE, message=FALSE, warning=FALSE}
 
 mu <- train_mini %>% group_by(userId) %>%
   summarise(mu = mean(rating))
@@ -103,7 +99,7 @@ train_usernorm %>% group_by(rating) %>% ggplot(aes(rating, rating_norm)) + geom_
 
 We will then regularize the movie data to adjust for movie effects.  First we will demonstrate the regularization of movie ratings with tuning parameter (lambda).  We will then show how we picked the ideal tuning parameter for the regularization.
 
-```{r}
+```{r echo=TRUE, warning=FALSE}
 
 lambda <- .5
 mu <- mean(train_mini$rating)
@@ -121,7 +117,7 @@ As we can see from the above plot, the regularization not only normalizes the da
 
 The lambda parameter can be tuned to achieve the best results in terms of root mean squared error.  Below is the process for selecting the optimal lambda.  Note that we a selecting the optimized lambda based purely on the training data, but will use the test data to evaluate the overall performance.
 
-```{r}
+```{r message=FALSE, warning=FALSE}
 lambdas <- seq(0, 10, 0.25)
 
 rmses <- sapply(lambdas, function(l){
@@ -153,7 +149,7 @@ plot(lambdas, rmses)
 
 Using the training set data, we can see the optimized lambda is .5.  We will use this parameter in order to make predictions using the textbook based model on the test set.
 
-```{r}
+```{r echo=TRUE, warning=FALSE}
 
 mu <- mean(train_mini$rating) #overall training wet average movie rating
 l_opt <- .5 #lambda selected from training set optimization
@@ -180,7 +176,7 @@ RMSE(test_mini$rating, predicted_ratings)
 ```
 Using the training set for optimizing the model and only using the test set for evaluation, can see that the overall performance is a little poorer than what was identified in the text book (.892 rather than .881).  However if the test data is used to optimize the parameter (which was what was done in the textbook), the results is quite similar to textbook regularized effects model as we can see below.
 
-```{r}
+```{r echo=TRUE, message=FALSE, warning=FALSE}
 lambdas <- seq(0, 10, 0.25)
 
 rmses <- sapply(lambdas, function(l){
@@ -228,14 +224,15 @@ l <- lambdas[which.min(rmses)] #selecting the lambda with the best RMSE score
     RMSE(predicted_ratings, test_mini$rating)
 
 ```
-Using the test data, we find that the optimal lambda parameter is 4.25.
+Using the test data, we find that the optimal lambda parameter is 4.25.  This gives us a similar RMSE result as the textbook.
 
-Now that we have our baseline model, we will explore the algorithms available for us in the recommenderlab package.
+Now that we have our baseline model, we will explore the algorithms and tools available in the _recommenderlab_ package.
 
-*_recommenderlab_ Collaborative Filtering, SVD and other models*
+*recommenderlab Collaborative Filtering and SVD-based models*
 
-The first step is to build a rating matrix that can be entered into the _recommenderlab_ "rating matrix" format.  One of the requirements of the _recommenderlab_ package is that each user is represented by a single row and that each item (or film in this case) is a column.  Given most users will only rate a handful of potential movies, this creates a "sparse" matrix comprised primarily of NAs that _recommenderlab_ stores is a less memory intensive way for computations.
-```{r}
+The first step is to import a data frame into the _recommenderlab_ "realRatingMatrix" format.  In order to use _recommenderlab_ tools, a rating matrix needs to be created so that each user is represented by a single row and that each item (or film in this case) is a column.  Given most users will only rate a handful of potential movies, this creates a "sparse" matrix comprised primarily of NAs that _recommenderlab_ stores is a less memory intensive way for computations.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
 
 rm <- as(mini, "realRatingMatrix")
 
@@ -243,11 +240,11 @@ hist(getRatings(rm), breaks = 15)
 
 ```
 
-We have imported our mini data set into the recommenderlab environment.  We will also take a look at using some of the built in functionality in recommenderlab to normalize the data, which is a recommended step before applying the recommender models built into the package.
+We have imported our mini data set into the _recommenderlab_ environment.  As you can see from the code for the histogram above, the environment uses a number of its own functions and unique class of objects.  We will also take a look at using some of the built in functionality in _recommenderlab_ to normalize the data, which is a recommended step before applying the recommender models built into the package.
 
 
 
-```{r}
+```{r echo=TRUE}
 rm <- normalize(rm) #normalize function which normalizes data by row (i.e., user)
 
 hist(getRatings(rm))
@@ -255,12 +252,12 @@ hist(getRatings(rm))
 
 
 
-There are a number of different recommender algorithms in the _recommenderlab_ that can be accessed using the command:  recommenderRegistry$get_entries(dataType = "realRatingMatrix").  It includes single value decomposition (SVD) based methods in addition to the IBCF and UBCF methods.
+There are a number of different recommender algorithms in the _recommenderlab_ that can be accessed using the command:  recommenderRegistry$get_entries(dataType = "realRatingMatrix").  It includes single value decomposition (SVD) based methods in addition to the Item-based Collaborative Filtering (IBCF) and User-based Collaborative Filtering (UBCF) methods.
 
 We will try using an evaluation methodology (evaluationScheme) built into the package to train and evaluate a "recommender" model.
 
 
-```{r}
+```{r echo=TRUE, message=FALSE, warning=FALSE}
 
 e <- evaluationScheme(rm, method="split", train=.9, given=10, goodRating=5)
 #building an evalutation scheme object from "realRatingMatrix".  90% of matrix will be used for training.  The given parameter is how many entries will be given to the model per user.  It is an adjustable parameter with a default of 10.  The "goodrating" parameter is simply to identify what a top rating would be under the model.
@@ -288,28 +285,22 @@ data.frame(IBCF_acc, UBCF_acc, SVDF_acc, SVD_acc)
 #building and printing a data frame with results of each method.
 ```
 
-Much to my surprise, the collaborative filtering methods I thought would be so powerful did not do nearly as well as I would have hoped.  The Funk Single Value Decomposition (SVDF) appears to be the model that provides the best accuracy, however the accuracy is much inferior to the much simpler baseline model we developed.  The SVD approximation method also did well and was much less computationally intensive and generated results much faster.  It is possible that a larger dataset could improve the performance of the collaborative filtering and single value decomposition models, however tuning of the models could also improve results substantially.
+Much to my surprise, the collaborative filtering methods I assumed would be so powerful based on the literature did not do nearly as well as I had hoped.  The Funk Single Value Decomposition (SVDF) appears to be the model that provides the best accuracy, however the accuracy is much inferior to the much simpler baseline model we developed.  The SVD approximation method also did well and was much less computationally intensive and generated results much faster.  It is possible that a larger dataset could improve the performance of the collaborative filtering and single value decomposition models, however tuning of the models could also improve results substantially.
 
 Lets see if we can evaluate it in a different way using training and test sets and if it is possible to tune the performance.  
 
-
-
 ```{r}
-reg_SVD <- recommenderRegistry$get_entry("SVD")
-reg_SVDF <- recommenderRegistry$get_entry("SVDF")
-data.frame(SVD = as.vector(reg_SVD$parameters))
+reg_SVD <- recommenderRegistry$get_entry("SVD") #accessing registry for SVD
+reg_SVDF <- recommenderRegistry$get_entry("SVDF")#accessing registry for SVDF
+data.frame(SVD = as.vector(reg_SVD$parameters))#pulling parameters for SVD
 
 ```
 Opening up and inspecting the registry entries for the SVD algorithm shows that there are essentially three parameters that are open to tuning.  "k" as in nearest neighbors in terms of features, which has a default value of 10, "maxiter" which has a default value of 100, and "normalize" which has a default value of "center".  Presumably the normalize can also be z-score normalized (or "scaled") which is another normalization technique described in the _recommenderlab_ documentation.
 
 
-```{r}
-data.frame(SVDF = as.vector(reg_SVDF$parameters))
-```
-However, SVDF has, in addition to the SVD parameters of "k" and "normalize", it also has "gamma" a regularization term, "lambda", the learning rate, "min_improvement", the requirement minimum improvement per iteration, "min_epochs", the minimum number of iterations per feature, "max_epochs", the maximum number of iterations per feature and "verbose" which is a logical parameter of showing progress.  Clearly SVDF is a more sophisticated and complicated algorithm to tune.
-
 Lets try by tuning the SVD model by tuning for "k".
-```{r}
+```{r warning=FALSE}
+set.seed(1, sample.kind = "Rounding")
 e <- evaluationScheme(rm, method="cross", k=10, train=.9, given=10, goodRating=5)#changing up evaluation scheme to include k-fold cross-validation
 ks <- seq(18, 38) #inputing a sequence of k-values for optimization.
 
@@ -323,15 +314,15 @@ qplot(ks, rmses) #plotting results
 
 ```
 
-After a series of trial and error of different sequences of integer values for "k", I was finding a somewhat linear trend of better performance due to higher level of k values, with 28 being the maximum value - much more than the default of 10.  This raised raised concerns of overtraining for me.  As such, using the evaluation scheme of _recommenderlab_ I introduced k-fold cross-validation which suggested an optimal value of 37 which provided an RMSE of .9995.  A slight improvement.
+After a series of trial and error of different sequences of integer values for "k", I was finding a somewhat linear trend of better performance due to higher level of k values, approximately 30 being the maximum value - much more than the default of 10.  This raised raised concerns of overtraining for me.  As such, using the evaluation scheme of _recommenderlab_ I introduced k-fold cross-validation which suggested an optimal value of 35 which provided an RMSE of .9973.  A slight improvement.
 
-Using this knowledge gained from the computationally less intensive SVD model, I would like to see how much we can improve the SVDF model by simply inputing the optimal the optimal SVD k-value of 37.
+Using this knowledge gained from the computationally less intensive SVD model, I would like to see how much we can improve the SVDF model by simply inputing the optimal the optimal SVD k-value of 35.
 
-After an extremely long processing time and using a k parameter of 37, the resulting RMSE is .8986.  Still short of the .8819 of our baseline model but getting closer.  Additionally tuning could refine the result, but it would take a significant amount of time with relatively little improvement as we saw with the SVD model tuning.  This is still way short of the grading-scale full-points standard of .8649.
+After an extremely long processing time and using a k parameter of 35, the resulting RMSE is .8986.  Still short of the .8819 of our baseline model but getting closer.  Additionally tuning could refine the result, but it would take a significant amount of time with relatively little improvement as we saw with the SVD model tuning.  This is still way short of the grading-scale full-points RMSE score of .8649.
 
 However, given what we learned through the textbook of the importance of not only normalizing data, but regularizing the data so as not to allow it to be skewed by few entries, and how that significantly improved our baseline model, I tried doing the same thing here.  
 
-```{r}
+```{r warning=FALSE}
 mu <- mean(train_mini$rating)
 movie_reg <- mini %>% 
   group_by(movieId) %>%
@@ -349,20 +340,12 @@ plot(movie_reg$rating~movie_avg$avg)
 Above is showing the effect of the regularization using a larger lambda parameter (4.25) identified through tuning the baseline model against the test data set.  You can see a much more significant impact on the scores.
 
 
-```{r}
+```{r echo=TRUE, message=FALSE, warning=FALSE}
 mu <- mean(train_mini$rating)
 mini_reg <- mini %>% 
   group_by(movieId) %>%
   mutate(rating = sum(rating-mu)/(n()+4.25)) %>% 
   ungroup()
-
-hist(mini_reg$rating)
-```
-
-A histogram shows a tighter concentration of centre normalized scores around zero.
-
-
-```{r}
 
 rm_reg <- as(as.data.frame(mini_reg), "realRatingMatrix")
 rm_reg <- normalize(rm_reg) #normalize entries by row (e.g., user)
@@ -371,29 +354,30 @@ hist(getRatings(rm_reg))
 
 ```
 
-As expected, ratings are centered around zero.   A little more tight than just normalizing the data by user (row). 
+As expected, ratings are centered around zero.  A little more tight than just normalizing the data by user (row). 
 
-If we examine the rating matrix as a data frame we can get see how the data is captured.
+_Examining a Sparse Rating Matrix_
 
-```{r}
+We will take a moment here to take a closer look at the nature of the sparse matrices we are working with.  If we examine the rating matrix as a data frame we can explore a little more closely how the data is captured.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
 
 head(as(rm_reg, "data.frame"))
 ```
 We can see the top rating of the first 6 rows are all from the same user, user "1".  We see that item 292 is the top rating of the 6 films rated by this user while the lowest ratings are item 355 and item 122.  Let's inspect these items closer to see what we are dealing with.
 
-```{r}
+```{r echo=TRUE, message=FALSE, warning=FALSE}
 
 c(mini_reg$title[292], mini_reg$title[122], mini_reg$title[355])
 
 ```
 The top rated film is the first entry in the data frame above, while the lowest rankings are the bottom two.
 
-All three are romantic films, however Bridget Jone's Diary, the top rated film of the 6, was a romantic comedy blockbuster while the other two are more "arthouse" films.  "Three Colors: White" is a french language romantic drama and "The Sum of Us" is a Australian LGBT romantic comedy.  This all seems consistent with the film choices of a person who likes to watch romantic comedies however who prefers more popular Hollywood films over arthouse features.
-
+All three are romantic films, however Bridget Jones's Diary, the top rated film of the 6, was a romantic comedy blockbuster while the other two are more "art house" films.  "Three Colors: White" is a french language romantic drama and "The Sum of Us" is a Australian LGBT romantic comedy.  This all seems consistent with the film choices of a person who likes to watch romantic comedies however who prefers more popular Hollywood films over art house features.
 
 Now We will take a look at a particular user to get a sense for the matrix.  In this case I have have chosen user "102".
 
-```{r}
+```{r echo=TRUE}
 sub_set <- rm_reg[102]
 as(sub_set, "matrix")[,1:50]
 
@@ -401,9 +385,9 @@ as(sub_set, "matrix")[,1:50]
 ```
 You can see that for user entry 102, the matrix is pretty sparse.  Only two entries in the first 50 columns (films).  This was actually better than most (and the reason why I picked 102) as generally speaking users did not rate any of the first 50 films.
 
-The scores have been normallized so rather than seeing a raw rating of .5 to 5, we are seeing the adjusted scores.  Positive scores reflected higher than average rated movies and negative scores reflect lower than average scoring for that user.
+The scores have been normalized and regularized for user and file effects, so rather than seeing a raw rating of .5 to 5, we are seeing the adjusted scores.  Positive scores reflected higher than average rated movies and negative scores reflect lower than average scoring for that user.
 
-```{r}
+```{r echo=TRUE}
 max <- which.max(as(sub_set, "matrix"))
 min <- which.min(as(sub_set, "matrix"))
 
@@ -412,53 +396,172 @@ c(as(sub_set, "matrix")[,max], as(sub_set, "matrix")[,min])
 ```
 We can see the range of scores above for user "102".  They are centered around 0 and it appears the user doesn't necessarily skew his scores one way or another.
 
+_Attempting to optimize the Baseline Model_
 
-Now that we have gotten a sense for the baseline model data (i.e., adjusted for movie and user effects), we will seek to apply the optimized k value using the SVD approximation model to see if we can get an improved score.
+Now that we have examined the baseline model data more closely, we will seek to apply the optimized k value using the SVD approximation model to see if we can get an improved score.
 
-```{r}
+```{r echo=TRUE, warning=FALSE}
 
 e_reg <- evaluationScheme(rm_reg, method="cross", k=10, given=10, goodRating=5)
-SVD_opt <- Recommender(getData(e_reg, "train"), method="SVD", para = list(k=37))
+SVD_opt <- Recommender(getData(e_reg, "train"), method="SVD", para = list(k=35))
 SVD_preds <- predict(SVD_opt, getData(e_reg, "known"), type="ratings")
 calcPredictionAccuracy(SVD_preds, getData(e_reg, "unknown"))
 
 ```
-Wow!  RMSE score of .429!  This was initially exciting but it also raised a red flag.  I realized in normalizing and regularizing the data I did so to the entire rating matrix, including to the values that make up the test set, before building my evaluation object.  Naturally modifying these values would have an effect on a the calculated RMSE.  The key to solving this appeared to be to try and apply this approach to objects other than the built in evaluation scheme that _recommenderlab_ uses, however that is where I ran into significant challenges.
+Wow!  RMSE score of .43!  This was initially exciting but it also raised a red flag.  I realized in normalizing and regularizing the data I did so to the entire rating matrix, including to the values that make up the test set, before building my evaluation object.  Naturally modifying these values would have an effect on a the calculated RMSE.  The key to solving this appeared to be to try and apply this approach to objects other than the built in evaluation scheme that _recommenderlab_ uses, however that is where I ran into significant challenges.
 
-While this SVD matrix factorization approach appeared very promising and seems to produce significant improvements to the baseline model , the _recommenderlab_ environment is somewhat self-contained, designed to use its own tools like the evaluation scheme for training and evaluating models.  It does not easily apply to the edx and validation models separately.  I tried to run the model developed in the recommenderlab environment on the code on the edx and a holdout dataset, I ran into memory errors (for example, an error regarding R's inability to handle a multi-gigabyte sized vector) and it simply would not run.  Very unfortunate and discouraging after having invested so much time in the package.
+While this SVD matrix factorization approach appeared very promising and seems to produce significant improvements to the baseline model , the _recommenderlab_ environment is somewhat self-contained, designed to use its own tools like the evaluation scheme for training and evaluating models.  It does not easily apply to the edx and validation data sets separately.  I tried to run the model developed in the _recommenderlab_ environment on the code on the larger edx object and a holdout dataset and I ran into memory errors (for example, an error regarding R's inability to handle a multi-gigabyte sized vector).  It simply would not run.  Very unfortunate and discouraging after having invested so much time in the package.
 
-Before completely abandoning the matrix factorization approach, I sought out other packages that may be able to use a similar approach but are not in such a self contained environment that the parameters of this project would prevent me from using them.
-
-Through monitoring the Movielens course bulletin boards I saw references to the _recosystem_ package.  It is similar to the _recommenderlab_ package in that it provides tools specifically for recommendation systems and leverages matrix factorization-based algorithms.  Also, it has some features that are specifically designed to limit the computational and memory load.  While it uses sparse matrices and matrix factorization in its computations, it is also to easily generate a vector of predictions in the same tidy format as the edx and validation dataframes.
-
-The _recosystem_ package does not have the same variety of recommender algorithms and built-in functions for the examination of sparse rating matrix data as _recommenderlab_.  The package is a user-friendly R wrapper of a LIBMF library of various high-performance C++ computational approaches to large scale matrix factorization.  It includes algorithms for binary, real value and other types of rating matrices.
+Before completely abandoning the matrix factorization approach, I explored other packages that may be able to use a similar approach but are not in such a self contained environment that the parameters of this project would prevent me from using them.
 
 
+*recosystem: Recommender System Using Parallel Matrix Factorization*
+
+Through monitoring the Movielens course bulletin boards I saw references to the _recosystem_ package.  It is similar to the _recommenderlab_ package in that it provides tools specifically for recommendation systems and leverages matrix factorization-based algorithms.  Also, it has some features that are specifically designed to limit the computational and memory load.  While it uses sparse matrices and matrix factorization in its computations, it is also to easily generate a vector of predictions in the same tidy format as the edx and validation data frames.
+
+The _recosystem_ package does not have the same variety of recommender algorithms and built-in functions for the examination of sparse rating matrix data as _recommenderlab_.  The package is a user-friendly R wrapper of a LIBMF library of various high-performance C++ computational approaches to large scale matrix factorization.  It includes matrix factorization algorithms for binary, real value and other types of rating matrices.  More details on the package can be found at https://cran.r-project.org/web/packages/recosystem/vignettes/introduction.html.
+
+Matrix factorization involves attempting to approximate an entire matrix through the product of lower dimension matrices.  The method is closely related to principal component analysis and single value decomposition demonstrated in the text book as ways to break down latent effects in highly dimension datasets by identifying correlations within the sets that can explain the variability of the data.  Model training is conducted through the process of solving the matrices and using a loss function based on observed ratings in order to optimize the model as well as penalty parameters to avoid overfitting.
+
+Similar to _recommenderlab_ the _recosystem_ has built in functionality to transform ratings data into a sparse matrix.  For training of models, the package requires the data in a triplet form with each row containing three numbers:  the user index, the item index, and the rating.  In the edx file this corresponds with the userId, movieId and Rating entries. Since ratings in testing data are often unknown, the rating entry can be ommitted in creating a testing data file in _recosystem_. Training and testing data is loaded either through the data_memory() function which creates an object in the local environment, or the data_file() function, which creates a file in the working directory with the data.
+
+With the data in hand, the first step is to create a model object by calling the Reco() function from _recosystem_.  This object and the various training, tuning and prediction methods operate a bit differently than the regular tidyverse environment.  The object itself is used to call the training, tuning and prediction functions using the assessor "$" and then the function and relevant arguments built into the call.
+
+Some initial testing and tuning of the _recosystem_ recommender model is shown below.
+
+```{r echo=TRUE, warning=FALSE}
+
+train <- data_memory(train_mini$userId, train_mini$movieId, rating = train_mini$rating) 
+#Inputting training data into a recosystem sparse matrix object
+
+r = Reco() #creating the recommender object: "r"
+
+r$train(train_data = train)
+#Training of LIBMF model - notice call is used from recommender object
+
+test <- data_memory(test_mini$userId, test_mini$movieId) 
+#Test set userId and movieId data inputed into recosys environment for 
+#prediction.  Note that the actual ratings are not entered into object.
+#The test set actual ratings will only be used for validating model prediction.
+
+r$predict(test_data = test)
+#prediction function for recosys based on validation data - it 
+#produces a file in the working directory that contains predictions. This can take a while.
+
+pred <-read.csv("predict.txt", header = FALSE)
+#reading the prediction file into the local environment.  Predictions are in CSV
+#format without a header.
+
+RMSE(test_mini$rating, pred$V1)
+#RMSE of .867
+```
+Before any tuning was conducted, the model is already providing an improved RMSE score than the baseline model and the computation time was only a few moments rather than the many minutes spent on earlier matrix factorization based algorithms.
+
+The _recosystem_ does not have built in functionality to normalize ratings data the way that the previous package did, so the user and film effects are still present.  If we adjust for those by leveraging our baseline model of user and film effects, we should see an improvement.
+
+```{r echo=TRUE, warning=FALSE}
+b_u <- train_mini %>% 
+  group_by(userId) %>%
+  summarize(b_u = mean(rating))
+#calculating the user bias
+
+train_baseline <- train_mini %>%
+  left_join(b_u, by="userId") %>%
+  mutate(rating_norm = rating-b_u)
+ #user effect is adjusted through normalization
+
+train <- data_memory(train_baseline$userId, train_baseline$movieId, rating = train_baseline$rating_norm) 
+#Inputting training data into a recosystem sparse matrix object
+
+r = Reco() #creating the recommender object: "r"
+
+r$train(train_data = train)
+#Training of LIBMF model - notice call is used from recommender object
+
+test_baseline <- test_mini %>%
+  left_join(b_u, by="userId") %>%
+  mutate(rating_norm = rating-b_u)
+
+test <- data_memory(test_baseline$userId, test_baseline$movieId) 
+#Test set userId and movieId data inputed into recosys environment for 
+#prediction.  Note that the actual ratings are not entered into object.
+#The test set actual ratings will only be used for validating model prediction.
+
+r$predict(test_data = test)
+#prediction function for recosys based on validation data - it 
+#produces a file in the working directory that contains predictions. This can take a while.
+
+pred <-read.csv("predict.txt", header = FALSE)
+#reading the prediction file into the local environment.  Predictions are in CSV
+#format without a header.
+
+RMSE(test_baseline$rating_norm, pred$V1)
+
+```
+Adjusting for user affect bias makes a slight improvement in overall performance.  However in order to normalize the scores by user to adjust for user bias, I also had to normalize the scores in the validation set by user to get the improved result as otherwise, the model would be reporting normalized scores and which would be measured against the actual ratings.  (Doing so provided an RMSE score of about 3.60.)  This approach seems to fall outside the parameters of the movielens capstone project which requires on the final hold out set ratings to be used for the sole purpose of generating the final RMSE score.  Therefore we will see what we can do to tune the _recosystem_ model to improve the score while respecting the parameters of the project.
+
+There are a number of different parameters to tune for the LIBMF model, including lrate, which is the learning rate, dim, which is a reference to the number of dimensions or latent factors, as well as regularization parameters for user and item effects (costp and costq),  By inserting vectors into the tuning function, the _recosystem_ tuning function will return a list of all the results with a loss function for each tuning permutation that was evaluated using 5-fold cross-validation by default.  The best tune parameter as defined by the loss function can be accessed by using the $min on the returned list.
+
+```{r echo=TRUE, warning=FALSE}
+
+train <- data_memory(train_mini$userId, train_mini$movieId, rating = train_mini$rating) 
+#Inputting training data into a recosystem sparse matrix object
+
+r = Reco() #creating the recommender object: "r"
 
 
+opts <- r$tune(train_data = train, opts = list(dim = c(10,20,30),
+                                               lrate = .1,
+                                               costp_l1 = 0, costp_l2=.1,
+                                               costq_l1=0, costq_l2=.1,
+                                               ntread =1, niter = 20, nfold=5))
+#the "opts" argument works like the tune grid from the caret package.  
 
+opts$min
+#accessing the optimized values from the tuning
+
+```
+
+
+After a number of different attempts to adjust the user and item (movie) factors due to the effects identified in the baseline model, it seems, perhaps unsurprisingly, that many of the default tuning options provided the best results.  Also, while a lower learning rate than the default seemed worked well to reduce the loss function, when applied against the test set, the RMSE score was not as good as the default results, which is likely due to overfitting.  Additionally, there seemed to be significant variability in the tuning results as each time I would run the model using the same parameters, I would get a different result.  Therefore I set aside the tuning function and a ran a replicate and sapply function on the training and evaluation of a LIBMF function with all of the parameters optimized, except for dimensionality.  For "dim" I created a short vector sequence of 10, 20, and 30 which I ran through each 30 times each in order to leverage the central limit therom to approximate the true RMSE value of the model against the test set for each value.  I plotted the mean of the 30 RMSE results against the "dim" values. 
+```{r message=FALSE, warning=FALSE}
+dims <- c(10, 20, 30)
+
+set.seed(1, sample.kind = "Rounding")
+rmses <- replicate(30, sapply(dims, function(dims){
+  r$train(train_data = train, opts = list(dim=dims, lrate = .1, costp_l1 = 0,
+                                        costp_l2=.1, costq_l1=0,
+                                        costq_l2=.1, niter=20))
+  #optimized parameters for training
+  r$predict(test_data = test)
+  pred <-read.csv("predict.txt", header = FALSE)
+#reading the prediction file into the local environment.  Predictions are in CSV
+#format without a header.
+  RMSE(test_mini$rating, pred$V1) 
+}))
+
+plot(dims, rowMeans(rmses))
+
+```
+Increasing the number of dimensions (latent factors) seems to provide an increasing performance of the model, however there is additional computation time added the more dimensions added.  As such I decided to target the minimum score that would provide a RMSE of .8649 or lower which is full marks for this project.  A "dim" value of 20 seems to be sufficient but will use 30 in order to be on the safe side.
 
 
 *RESULTS*
 
-```{r, echo=FALSE}
-mu <- mean(edx$rating)
+Now that we have our optimized parameters, we will test the model on the edx and validation sets.
 
-res <- edx %>% 
-  group_by(userId) %>%
-  mutate(bu = mean(rating-mu)) %>% #user effect is adjusted through normalization
-  ungroup() %>%
-  group_by(movieId) %>%
-  mutate(bi = sum(rating-mu)/(n()+.5)) %>% #movie effect is adjusted through regularization
-  ungroup() %>%
-  mutate(res = rating-bu-bi)#residuals found through removing user and movie effects
+```{r echo=TRUE, warning=FALSE}
+load("validation.rda")
 
-train <- data_memory(res$userId, res$movieId, rating = res$rating) 
+set.seed(1, sample.kind="Rounding")
+
+train <- data_memory(edx$userId, edx$movieId, rating = edx$rating) 
 #sparse matrix of residuals are basis for training matrix factorization model
 
 r = Reco() #creating the Recommender System Object of the recosys package
 
-r$train(train_data = train, opts = list(costq_l1 = 0))
+r$train(train_data = train, opts = list(dim=30, lrate = .1, costp_l1 = 0,
+                                        costp_l2=.1, costq_l1=0, costq_l2=.1))
 #LIMBF model is trained using residual sparse matrix
 
 valid <- data_memory(validation$userId, validation$movieId) 
@@ -475,15 +578,18 @@ pred <-read.csv("predict.txt", header = FALSE)
 #format without a header.
 
 RMSE(validation$rating, pred$V1)
-#.8324285 RMSE```
-
-a results section that presents the modeling results and discusses the model performance
-
-
-
-
-```{r}
+#.819 RMSE
 
 ```
+The final model has a RMSE score of .819.  The performance of the model could be improved further by increasing the number of dimensions but would create an additional computational cost that is not necessary.
+
+
 *Conclusion*
-conclusion section that gives a brief summary of the report, its limitations and future work
+
+It is clear that a matrix factorization approach is a powerful machine learning solution for recommender systems.  Its performance makes it obvious why it is used in some many recommender systems and so prevalent in literature and machine learning forums.  The LIBMF matrix factorization algorithm was the most powerful and least costly of the matrix factorization-based algorithms I was able to evaluate.  Further tuning of the algorithm by increasing the dimensions parameter could have even further improved the algorithm's performance in predicting movie ratings of users albeit at a higher computational cost.  Additionally, the the _recosystem_ package which housed the LIBMF algorithm is a relatively simple package to learn and use and provides for powerful results.  While it is not as feature-filled as other packages it clearly gets the job done.  
+
+While I was happy to find an algorithm that worked well and could be optimized to provide the results that were the objective of the course, I have mixed feelings about the final outcome.  The amount of time I spent trying to use the matrix factorization approach, including the time it took to run many computationally intensive algorithms, the technical challenges and the learning curve involved in exploring multiple new R packages, each very different from the Tidyverse, was a great source of frustration.  In hindsight, developing a simpler model, based on the approached established for the baseline model would have been a more enjoyable experience.  I could have spent more time hypothesizing and trying to model different kinds of effects in the data rather than banging my head against a wall trying to make matrix factorization work on my ancient laptop.  
+
+For example, I could have explored a hypothesis I had about leveraging the information encoded in the 'timestamp' variable of the data set to identify the effects that the day of the week or time of the year has on user ratings of films.  Movie theaters in North America are much busier on Fridays and Saturdays which could have an impact on a film-goers experience of a film, and ratings provided to films during "Oscar season" versus the summer 'blockbuster' season could have an effect on user experiences.  While these effects would likely not have been nearly as powerful in a predictive sense, they are much more easily interpretable and enjoyable to explore than the matrix factorization approach.  Matrix factorization is easily enough to understand from a conceptual perspective, however the actual results feel like they come out of a black box.
+
+All in all it was a valuable learning experience even though it is one I would try to avoid in my next machine learning project.
