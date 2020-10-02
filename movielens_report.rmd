@@ -27,7 +27,7 @@ This is a Movielens project report for the Harvardx Data Science professional pr
 
 Specifically, this report will demonstrate the steps taken to identify and optimize a matrix factorization-based machine learning algorithm to predict in a randomly selected hold out validation set made up of 10% of the 10 million entries.  The root mean squared error (RMSE) of the algorithm against the true values in the validation set will be used as part of the overall scoring of this project. (The validation set is not to be used for the training, evaluation or cross-validation of the algorithm.)  This project focused on two packages that use matrix factorization  algorithms for the prediction of user ratings:  the _recommenderlab_ package and the _recosystem_ package.
 
-_Overview of the dataset_
+_Overview of the Movielens Dataset_
 
 The project instructions require the use of the "edx" object as the training set portion of the project.  The original edx set included six columns: "userID", which provide a unique user identification number; "movieID", which provided a unique identification number for each move; "rating", the rating assigned by the user for the movie; and "timestamp", which was the time the user rating was recorded in POSIXct format.  Since "timestamp" is not easily interpretable, I added a seventh column, "datetime" which translated the timestamp into an accessible date and time format for each movie rating entry.  In all there are little more than 9 million movie rating entries from more than 70,000 users rating about 10,000 movies in the dataset  The earliest movie rating entry is from January 1995, and the latest is from January 2009.  Ratings were given in .5 increments between .5 to 5 stars (there is no 0 entries in the data set).  Ratings half star ratings were generally less common than full star ratings.  Four and three stars were the most common ratings, followed by 5 stars and 3.5 stars.
 
@@ -51,11 +51,12 @@ qplot(datetime, data = edx, geom = "density")
 
 A density plot of ratings over time shows that while the earliest ratings were registered in 1995, the number of ratings spiked in 1997 and then spiked again in 2000 and maintained a steady stream of ratings until 2009 when data collection stopped.
 
-*Methodology and Analysis*
+
+*METHODOLOGY AND ANALYSIS*
 
 The text book materials for the HarvardX machine learning course included a detailed discussion of the Movielens data and went son to examine a number of prediction methodologies, including taking into account user and movie effects as well as regularizing movie effects by minimizing the impact of outlier ratings on less commonly reviewed movies.  My intent is to start by recreating the most successful of the methodologies discussed in the text book (Regularized Movie + User Effect model:  .881 RMSE) and attempt to improve upon it.
 
-The text book did provide a  clue as to how to improve on the model: using matrix factorization to identify latent patterns within the residuals of the Regularized Movie + User effect model (Chapter 33.11 - Matrix Factorization).  Using single value decomposition and principle component analysis, the course materials showed  there were  patterns left in the data in terms of groupings of movies that generally are rated similarly, which could be a basis for further improving on the model.  While the textbook did not discuss techniques that would use these estimates to fit a model, it recommended using the recommenderlab package for those students who were interested.
+The text book did provide a  clue as to how to improve on the model: using matrix factorization to identify latent patterns within the residuals of the Regularized Movie + User effect model (Chapter 33.11 - Matrix Factorization).  Using single value decomposition and principle component analysis, the course materials showed  there were  patterns left in the data in terms of groupings of movies that generally are rated similarly, which could be a basis for further improving on the model.  While the textbook did not discuss techniques that would use these estimates to fit a model, it recommended using the _recommenderlab_ package for those students who were interested.
 
 _recommenderlab: Lab for Developing and Testing Recommender Algoritms in R_
 
@@ -66,7 +67,7 @@ User-based and item-based collaborative filtering models are prominently discuss
 This project will examine collaborative filtering, single value decomposition and other matrix factorization algorithms within the _recommenderlab_ and _recosystem_ packages to try and improve on the baseline results of the text book Regularized Movie + User effect model.
 
 
-*Analysis*
+*MODEL EXPLORATION AND ANALYSIS*
 
 As a first step we will create a small subset of the 100,000 entries from the edx dataset and create a training and a test set.
 ```{r echo=TRUE, warning=FALSE}
@@ -301,14 +302,15 @@ data.frame(SVD = as.vector(reg_SVD$parameters))#pulling parameters for SVD
 ```
 Opening up and inspecting the registry entries for the SVD algorithm shows that there are essentially three parameters that are open to tuning.  "k" as in nearest neighbors in terms of features, which has a default value of 10, "maxiter" which has a default value of 100, and "normalize" which has a default value of "center".  Presumably the normalize can also be z-score normalized (or "scaled") which is another normalization technique described in the _recommenderlab_ documentation.
 
-
-Lets try by tuning the SVD model by tuning for "k".
+Lets try by tuning the SVD model by tuning for "k" by using an sapply function.
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
 set.seed(1, sample.kind = "Rounding")
 e <- evaluationScheme(rm, method="cross", k=10, train=.9, given=10, goodRating=5)
 #changing up evaluation scheme to include k-fold cross-validation
-ks <- seq(18, 38) #inputing a sequence of k-values for optimization.
 
+ks <- seq(28, 38) #inputing a sequence of k-values for optimization.
+
+set.seed(1, sample.kind = "Rounding")
 rmses <- sapply(ks, function(ks){
 results <- evaluate(e, method="SVD", type="ratings", param = list(k=ks))
 avg(results)[1]
@@ -321,7 +323,7 @@ qplot(ks, rmses) #plotting results
 
 After a series of trial and error of different sequences of integer values for "k", I was finding a somewhat linear trend of better performance due to higher level of k values, approximately 30 being the maximum value - much more than the default of 10.  This raised raised concerns of overtraining for me.  As such, using the evaluation scheme of _recommenderlab_ I introduced k-fold cross-validation which suggested an optimal value of 35 which provided an RMSE of .9973.  A slight improvement.
 
-Using this knowledge gained from the computationally less intensive SVD model, I would like to see how much we can improve the SVDF model by simply inputing the optimal the optimal SVD k-value of 35.
+Using this knowledge gained from the computationally less intensive SVD model, I would like to see how much we can improve the SVDF model by simply inputing the optimal SVD k-value of 35.
 
 After an extremely long processing time and using a k parameter of 35, the resulting RMSE is .8986.  Still short of the .8819 of our baseline model but getting closer.  Additionally tuning could refine the result, but it would take a significant amount of time with relatively little improvement as we saw with the SVD model tuning.  This is still way short of the grading-scale full-points RMSE score of .8649.
 
@@ -589,7 +591,7 @@ RMSE(validation$rating, pred$V1)
 The final model has a RMSE score of .819.  The performance of the model could be improved further by increasing the number of dimensions but would create an additional computational cost that is not necessary.
 
 
-*Conclusion*
+*CONCLUSION*
 
 It is clear that a matrix factorization approach is a powerful machine learning solution for recommender systems.  Its performance makes it obvious why it is used in some many recommender systems and so prevalent in literature and machine learning forums.  The LIBMF matrix factorization algorithm was the most powerful and least costly of the matrix factorization-based algorithms I was able to evaluate.  Further tuning of the algorithm by increasing the dimensions parameter could have even further improved the algorithm's performance in predicting movie ratings of users albeit at a higher computational cost.  Additionally, the the _recosystem_ package which housed the LIBMF algorithm is a relatively simple package to learn and use and provides for powerful results.  While it is not as feature-filled as other packages it clearly gets the job done.  
 
